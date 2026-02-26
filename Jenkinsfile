@@ -63,7 +63,7 @@ pipeline {
         stage("SonarQube: Code Analysis") {
             steps {
                 script {
-                    withSonarQubeEnv('SonarQube-Server') {
+                    withSonarQubeEnv('Sonar') {
                         sonarqube_analysis("Sonar", "fullstack", "fullstack")
                     }
                 }
