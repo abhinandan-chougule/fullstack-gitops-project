@@ -63,7 +63,7 @@ pipeline {
         stage("SonarQube: Code Analysis") {
             steps {
                 script {
-                    withSonarQubeEnv('SonarQube-Server') {
+                    withSonarQubeEnv('http://18.139.84.52:9000') {
                         sonarqube_analysis("Sonar", "fullstack", "fullstack")
                     }
                 }
