@@ -4,7 +4,7 @@ pipeline {
     
     environment {
         SONAR_HOME = tool "Sonar"
-        DC_DATA_DIR = "/var/lib/dependency-check"   // persistent cache
+        DC_DATA_DIR = "/var/lib/dependency-check"
     }
     
     parameters {
@@ -23,13 +23,13 @@ pipeline {
             }
         }
 
-        stage("Workspace cleanup") {
+        stage("Workspace Cleanup") {
             steps {
                 cleanWs()
             }
         }
         
-        stage('Git: Code Checkout') {
+        stage("Git: Code Checkout") {
             steps {
                 script {
                     code_checkout(
@@ -40,7 +40,7 @@ pipeline {
             }
         }
         
-        stage("Trivy: Filesystem scan") {
+        stage("Trivy: Filesystem Scan") {
             steps {
                 script {
                     trivy_scan()
@@ -48,7 +48,7 @@ pipeline {
             }
         }
 
-        stage("OWASP: Dependency check") {
+        stage("OWASP: Dependency Check") {
             steps {
                 withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_API_KEY')]) {
                     script {
@@ -63,24 +63,22 @@ pipeline {
         stage("SonarQube: Code Analysis") {
             steps {
                 script {
-                    withSonarQubeEnv('Sonar') {
-                        sonarqube_analysis("Sonar", "fullstack", "fullstack")
-                    }
+                    sonarqube_analysis("Sonar", "fullstack", "fullstack")
                 }
             }
         }
         
-        stage("SonarQube: Code Quality Gates") {
+        stage("SonarQube: Quality Gate") {
             steps {
                 script {
-                    timeout(time: 5, unit: 'MINUTES') {
+                    timeout(time: 10, unit: 'MINUTES') {
                         waitForQualityGate abortPipeline: true
                     }
                 }
             }
         }
         
-        stage('Exporting environment variables') {
+        stage("Exporting Environment Variables") {
             parallel {
                 stage("Backend env setup") {
                     steps {
@@ -106,7 +104,6 @@ pipeline {
                     dir('backend') {
                         docker_build("fullstack-backend-beta", "${params.BACKEND_DOCKER_TAG}", "abhic25")
                     }
-                    
                     dir('frontend') {
                         docker_build("fullstack-frontend-beta", "${params.FRONTEND_DOCKER_TAG}", "abhic25")
                     }
@@ -132,6 +129,9 @@ pipeline {
                 string(name: 'FRONTEND_DOCKER_TAG', value: "${params.FRONTEND_DOCKER_TAG}"),
                 string(name: 'BACKEND_DOCKER_TAG', value: "${params.BACKEND_DOCKER_TAG}")
             ]
+        }
+        failure {
+            echo "Pipeline failed. Please check the logs."
         }
     }
 }
