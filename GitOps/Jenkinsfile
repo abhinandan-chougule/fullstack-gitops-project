@@ -1,125 +1,120 @@
 @Library('Shared') _
 pipeline {
-    agent {label 'Node'}
-    
+    agent { label 'Node' }
+
     parameters {
-        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: '', description: 'Frontend Docker tag of the image built by the CI job')
-        string(name: 'BACKEND_DOCKER_TAG', defaultValue: '', description: 'Backend Docker tag of the image built by the CI job')
+        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: '', description: 'Frontend image tag')
+        string(name: 'BACKEND_DOCKER_TAG', defaultValue: '', description: 'Backend image tag')
     }
 
     stages {
-        stage("Workspace cleanup"){
-            steps{
-                script{
-                    cleanWs()
-                }
-            }
-        }
-        
-        stage('Git: Code Checkout') {
+        stage("Validate Parameters") {
             steps {
-                script{
-                    code_checkout("https://github.com/abhinandan-chougule/fullstack-gitops-project.git","main")
+                script {
+                    if (params.FRONTEND_DOCKER_TAG == '' || params.BACKEND_DOCKER_TAG == '') {
+                        error("FRONTEND_DOCKER_TAG and BACKEND_DOCKER_TAG must be provided.")
+                    }
                 }
             }
         }
-        
-        stage('Verify: Docker Image Tags') {
+
+        stage("Workspace Cleanup") {
             steps {
-                script{
-                    echo "FRONTEND_DOCKER_TAG: ${params.FRONTEND_DOCKER_TAG}"
-                    echo "BACKEND_DOCKER_TAG: ${params.BACKEND_DOCKER_TAG}"
+                cleanWs()
+            }
+        }
+
+        stage("Git: Code Checkout") {
+            steps {
+                script {
+                    code_checkout(
+                        "https://github.com/abhinandan-chougule/fullstack-gitops-project.git",
+                        "main"
+                    )
                 }
             }
         }
-        
-        
-        stage("Update: Kubernetes manifests"){
-            steps{
-                script{
-                    dir('kubernetes'){
-                        sh """
-                            sed -i -e s/fullstack-backend-beta.*/fullstack-backend-beta:${params.BACKEND_DOCKER_TAG}/g backend.yaml
-                        """
-                    }
-                    
-                    dir('kubernetes'){
-                        sh """
-                            sed -i -e s/fullstack-frontend-beta.*/fullstack-frontend-beta:${params.FRONTEND_DOCKER_TAG}/g frontend.yaml
-                        """
-                    }
-                    
+
+        stage("Update Kubernetes Manifests") {
+            steps {
+                dir("Automations") {
+                    sh "bash updatebackendnew.sh"
+                    sh "bash updatefrontendnew.sh"
                 }
             }
         }
-        
-        stage("Git: Code update and push to GitHub"){
-            steps{
-                script{
-                    withCredentials([gitUsernamePassword(credentialsId: 'Github-cred', gitToolName: 'Default')]) {
-                        sh '''
-                        echo "Checking repository status: "
-                        git status
-                    
-                        echo "Adding changes to git: "
-                        git add .
-                        
-                        echo "Commiting changes: "
-                        git commit -m "Updated environment variables"
-                        
-                        echo "Pushing changes to github: "
-                        git push https://github.com/abhinandan-chougule/fullstack-gitops-project.git main
-                    '''
-                    }
+
+        stage("Git: Push Changes & Raise PR") {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'github',
+                    usernameVariable: 'GITHUB_USER',
+                    passwordVariable: 'GITHUB_TOKEN'
+                )]) {
+                    sh """
+                        git config --global user.email "jenkins@ci.com"
+                        git config --global user.name "Jenkins"
+
+                        echo ${GITHUB_TOKEN} | gh auth login --with-token
+
+                        BRANCH_NAME="update-image-tags-\$(date +%Y%m%d%H%M%S)"
+
+                        git checkout main
+                        git pull origin main
+                        git checkout -b \$BRANCH_NAME
+
+                        git add kubernetes/backend.yaml kubernetes/frontend.yaml
+                        git commit -m "Update image tags: frontend=${params.FRONTEND_DOCKER_TAG} backend=${params.BACKEND_DOCKER_TAG}"
+
+                        git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/abhinandan-chougule/fullstack-gitops-project.git \$BRANCH_NAME
+
+                        gh pr create \
+                            --title "Update image tags: ${params.FRONTEND_DOCKER_TAG}" \
+                            --body "## Changes
+                            - Frontend image tag: ${params.FRONTEND_DOCKER_TAG}
+                            - Backend image tag: ${params.BACKEND_DOCKER_TAG}
+                            - Updated by Jenkins CD Pipeline
+                            - Build URL: ${env.BUILD_URL}" \
+                            --base main \
+                            --head \$BRANCH_NAME \
+                            --repo abhinandan-chougule/fullstack-gitops-project
+                    """
                 }
             }
         }
     }
-  post {
+
+    post {
         success {
-            script {
-                emailext attachLog: true,
-                from: 'askchougule@gmail.com',
-                subject: "Wanderlust Application has been updated and deployed - '${currentBuild.result}'",
-                body: """
-                    <html>
-                    <body>
-                        <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                        </div>
-                        <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                        </div>
-                        <div style="background-color: #87CEEB; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">URL: ${env.BUILD_URL}</p>
-                        </div>
-                    </body>
-                    </html>
-            """,
-            to: 'askchougule@gmail.com',
-            mimeType: 'text/html'
-            }
+            echo "PR raised successfully. Waiting for approval before ArgoCD syncs."
         }
-      failure {
-            script {
-                emailext attachLog: true,
-                from: 'askchougule@gmail.com',
-                subject: "Fullstack Application build failed - '${currentBuild.result}'",
-                body: """
-                    <html>
-                    <body>
-                        <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                        </div>
-                        <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                        </div>
-                    </body>
-                    </html>
-            """,
-            to: 'askchougule@gmail.com',
-            mimeType: 'text/html'
-            }
+        failure {
+            echo "Pipeline failed. Please check the logs."
         }
     }
 }
+```
+
+---
+
+## How It Works End to End
+```
+CD Pipeline triggers
+        ↓
+Update kubernetes/backend.yaml & frontend.yaml
+        ↓
+Create branch: update-image-tags-20240226120000
+        ↓
+Commit changes
+        ↓
+Push branch to GitHub
+        ↓
+Raise PR → main
+        ↓
+Team reviews & approves PR
+        ↓
+Merge to main
+        ↓
+ArgoCD detects change in main
+        ↓
+Auto sync to Kubernetes cluster
