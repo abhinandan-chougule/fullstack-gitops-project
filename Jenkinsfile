@@ -1,9 +1,10 @@
 @Library('Shared') _
 pipeline {
-    agent {label 'Node'}
+    agent { label 'Node' }
     
-    environment{
+    environment {
         SONAR_HOME = tool "Sonar"
+        DC_DATA_DIR = "/var/lib/dependency-check"   // persistent cache
     }
     
     parameters {
@@ -21,104 +22,108 @@ pipeline {
                 }
             }
         }
-        stage("Workspace cleanup"){
-            steps{
-                script{
-                    cleanWs()
-                }
+
+        stage("Workspace cleanup") {
+            steps {
+                cleanWs()
             }
         }
         
         stage('Git: Code Checkout') {
             steps {
-                script{
-                    code_checkout("https://github.com/abhinandan-chougule/fullstack-gitops-project.git","main")
+                script {
+                    code_checkout(
+                        "https://github.com/abhinandan-chougule/fullstack-gitops-project.git",
+                        "main"
+                    )
                 }
             }
         }
         
-        stage("Trivy: Filesystem scan"){
-            steps{
-                script{
+        stage("Trivy: Filesystem scan") {
+            steps {
+                script {
                     trivy_scan()
                 }
             }
         }
 
-        stage("OWASP: Dependency check"){
-            steps{
-                script{
-                    owasp_dependency()
+        stage("OWASP: Dependency check") {
+            steps {
+                withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_API_KEY')]) {
+                    script {
+                        owasp_dependency(
+                            "--nvdApiKey=${NVD_API_KEY} --data ${DC_DATA_DIR}"
+                        )
+                    }
                 }
             }
         }
         
-        stage("SonarQube: Code Analysis"){
-            steps{
-                script{
-                    sonarqube_analysis("Sonar","fullstack","fullstack")
+        stage("SonarQube: Code Analysis") {
+            steps {
+                script {
+                    sonarqube_analysis("Sonar", "fullstack", "fullstack")
                 }
             }
         }
         
-        stage("SonarQube: Code Quality Gates"){
-            steps{
-                script{
+        stage("SonarQube: Code Quality Gates") {
+            steps {
+                script {
                     sonarqube_code_quality()
                 }
             }
         }
         
         stage('Exporting environment variables') {
-            parallel{
-                stage("Backend env setup"){
+            parallel {
+                stage("Backend env setup") {
                     steps {
-                        script{
-                            dir("Automations"){
-                                sh "bash updatebackendnew.sh"
-                            }
+                        dir("Automations") {
+                            sh "bash updatebackendnew.sh"
                         }
                     }
                 }
                 
-                stage("Frontend env setup"){
+                stage("Frontend env setup") {
                     steps {
-                        script{
-                            dir("Automations"){
-                                sh "bash updatefrontendnew.sh"
-                            }
+                        dir("Automations") {
+                            sh "bash updatefrontendnew.sh"
                         }
                     }
                 }
             }
         }
         
-        stage("Docker: Build Images"){
-            steps{
-                script{
-                        dir('backend'){
-                            docker_build("fullstack-backend-beta","${params.BACKEND_DOCKER_TAG}","abhic25")
-                        }
+        stage("Docker: Build Images") {
+            steps {
+                script {
+                    dir('backend') {
+                        docker_build("fullstack-backend-beta", "${params.BACKEND_DOCKER_TAG}", "abhic25")
+                    }
                     
-                        dir('frontend'){
-                            docker_build("fullstack-frontend-beta","${params.FRONTEND_DOCKER_TAG}","abhic25")
-                        }
+                    dir('frontend') {
+                        docker_build("fullstack-frontend-beta", "${params.FRONTEND_DOCKER_TAG}", "abhic25")
+                    }
                 }
             }
         }
         
-        stage("Docker: Push to DockerHub"){
-            steps{
-                script{
-                    docker_push("fullstack-backend-beta","${params.BACKEND_DOCKER_TAG}","abhic25") 
-                    docker_push("fullstack-frontend-beta","${params.FRONTEND_DOCKER_TAG}","abhic25")
+        stage("Docker: Push to DockerHub") {
+            steps {
+                script {
+                    docker_push("fullstack-backend-beta", "${params.BACKEND_DOCKER_TAG}", "abhic25") 
+                    docker_push("fullstack-frontend-beta", "${params.FRONTEND_DOCKER_TAG}", "abhic25")
                 }
             }
         }
     }
-    post{
-        success{
+
+    post {
+        success {
             archiveArtifacts artifacts: '*.xml', followSymlinks: false
+            
             build job: "Wanderlust-CD", parameters: [
                 string(name: 'FRONTEND_DOCKER_TAG', value: "${params.FRONTEND_DOCKER_TAG}"),
                 string(name: 'BACKEND_DOCKER_TAG', value: "${params.BACKEND_DOCKER_TAG}")
