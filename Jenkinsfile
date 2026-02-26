@@ -63,7 +63,9 @@ pipeline {
         stage("SonarQube: Code Analysis") {
             steps {
                 script {
-                    sonarqube_analysis("Sonar", "fullstack", "fullstack")
+                    withSonarQubeEnv('SonarQube-Server') {
+                        sonarqube_analysis("Sonar", "fullstack", "fullstack")
+                    }
                 }
             }
         }
@@ -71,7 +73,9 @@ pipeline {
         stage("SonarQube: Code Quality Gates") {
             steps {
                 script {
-                    sonarqube_code_quality()
+                    timeout(time: 5, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: true
+                    }
                 }
             }
         }
