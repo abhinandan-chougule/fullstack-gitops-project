@@ -1,78 +1,83 @@
 @Library('Shared') _
 pipeline {
     agent { label 'Node' }
-    
+
     parameters {
-        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: '', description: 'Frontend Docker tag of the image built by the CI job')
-        string(name: 'BACKEND_DOCKER_TAG', defaultValue: '', description: 'Backend Docker tag of the image built by the CI job')
+        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: '', description: 'Frontend Docker tag')
+        string(name: 'BACKEND_DOCKER_TAG', defaultValue: '', description: 'Backend Docker tag')
+    }
+
+    environment {
+        REPO_URL = "https://github.com/abhinandan-chougule/fullstack-gitops-project.git"
+        BRANCH   = "main"
     }
 
     stages {
+
         stage("Workspace cleanup") {
             steps {
-                script {
-                    cleanWs()
-                }
+                cleanWs()
             }
         }
-        
+
         stage('Git: Code Checkout') {
             steps {
                 script {
-                    code_checkout("https://github.com/abhinandan-chougule/fullstack-gitops-project.git", "main")
+                    code_checkout(env.REPO_URL, env.BRANCH)
                 }
             }
         }
-        
+
         stage('Verify: Docker Image Tags') {
             steps {
-                script {
-                    echo "FRONTEND_DOCKER_TAG: ${params.FRONTEND_DOCKER_TAG}"
-                    echo "BACKEND_DOCKER_TAG: ${params.BACKEND_DOCKER_TAG}"
-                }
+                echo "FRONTEND_DOCKER_TAG: ${params.FRONTEND_DOCKER_TAG}"
+                echo "BACKEND_DOCKER_TAG: ${params.BACKEND_DOCKER_TAG}"
             }
         }
-        
+
         stage("Update: Kubernetes manifests") {
             steps {
-                script {
-                    dir('kubernetes') {
-                        sh """
-                            sed -i -e s/fullstack-backend-beta.*/fullstack-backend-beta:${params.BACKEND_DOCKER_TAG}/g backend.yaml
-                        """
-                    }
-                    
-                    dir('kubernetes') {
-                        sh """
-                            sed -i -e s/fullstack-frontend-beta.*/fullstack-frontend-beta:${params.FRONTEND_DOCKER_TAG}/g frontend.yaml
-                        """
-                    }
+                dir('kubernetes') {
+                    sh """
+                        sed -i 's|fullstack-backend-beta:.*|fullstack-backend-beta:${params.BACKEND_DOCKER_TAG}|g' backend.yaml
+                        sed -i 's|fullstack-frontend-beta:.*|fullstack-frontend-beta:${params.FRONTEND_DOCKER_TAG}|g' frontend.yaml
+                    """
                 }
             }
         }
-        
+
         stage("Git: Code update and push to GitHub") {
             steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'Github-cred', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
-                        sh '''
-                            echo "Configuring Git credentials..."
-                            git config user.name "$GIT_USER"
-                            git config user.email "your-email@example.com"
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'Github-cred',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_TOKEN'
+                    )
+                ]) {
 
-                            echo "Checking repository status:"
-                            git status
+                    sh '''
+                        set -e
 
-                            echo "Adding changes to git:"
-                            git add .
+                        echo "Configuring Git..."
+                        git config user.name "Jenkins"
+                        git config user.email "jenkins@ci.com"
 
-                            echo "Committing changes:"
-                            git commit -m "Updated environment variables" || echo "No changes to commit"
+                        echo "Checking repository status:"
+                        git status
 
-                            echo "Pushing changes to GitHub:"
-                            git push https://$GIT_USER:$GIT_PASS@github.com/abhinandan-chougule/fullstack-gitops-project.git main
-                        '''
-                    }
+                        echo "Adding changes..."
+                        git add .
+
+                        echo "Committing changes..."
+                        git commit -m "Updated image tags: frontend=${FRONTEND_DOCKER_TAG} backend=${BACKEND_DOCKER_TAG}" || echo "No changes to commit"
+
+                        echo "Setting authenticated remote..."
+                        git remote set-url origin https://$GIT_USER:$GIT_TOKEN@github.com/abhinandan-chougule/fullstack-gitops-project.git
+
+                        echo "Pushing to GitHub..."
+                        git push origin main
+                    '''
                 }
             }
         }
@@ -80,49 +85,43 @@ pipeline {
 
     post {
         success {
-            script {
-                emailext attachLog: true,
+            emailext(
+                attachLog: true,
                 from: 'askchougule@gmail.com',
-                subject: "Wanderlust Application has been updated and deployed - '${currentBuild.result}'",
+                subject: "Application Updated Successfully - ${currentBuild.result}",
+                mimeType: 'text/html',
+                to: 'askchougule@gmail.com',
                 body: """
                     <html>
                     <body>
-                        <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                        </div>
-                        <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                        </div>
-                        <div style="background-color: #87CEEB; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">URL: ${env.BUILD_URL}</p>
-                        </div>
+                        <h3>Deployment Successful ✅</h3>
+                        <p><b>Project:</b> ${env.JOB_NAME}</p>
+                        <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
+                        <p><b>URL:</b> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                     </body>
                     </html>
-                """,
-                to: 'askchougule@gmail.com',
-                mimeType: 'text/html'
-            }
+                """
+            )
         }
+
         failure {
-            script {
-                emailext attachLog: true,
+            emailext(
+                attachLog: true,
                 from: 'askchougule@gmail.com',
-                subject: "Fullstack Application build failed - '${currentBuild.result}'",
+                subject: "Application Build Failed - ${currentBuild.result}",
+                mimeType: 'text/html',
+                to: 'askchougule@gmail.com',
                 body: """
                     <html>
                     <body>
-                        <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                        </div>
-                        <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                        </div>
+                        <h3>Build Failed ❌</h3>
+                        <p><b>Project:</b> ${env.JOB_NAME}</p>
+                        <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
+                        <p><b>Check Console Output for details.</b></p>
                     </body>
                     </html>
-                """,
-                to: 'askchougule@gmail.com',
-                mimeType: 'text/html'
-            }
+                """
+            )
         }
     }
 }
