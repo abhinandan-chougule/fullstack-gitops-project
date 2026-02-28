@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: abhic25/fullstack-backend-beta:abhic25
+          image: abhic25/fullstack-backend-beta:backend-prod
           ports:
             - containerPort: 8080
 ---
