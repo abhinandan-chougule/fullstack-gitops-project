@@ -101,6 +101,7 @@ pipeline {
         stage("Docker: Build Images") {
             steps {
                 script {
+                    // Generate unique tags per build
                     def backendTag = "${params.BACKEND_DOCKER_TAG}-${env.BUILD_NUMBER}"
                     def frontendTag = "${params.FRONTEND_DOCKER_TAG}-${env.BUILD_NUMBER}"
 
