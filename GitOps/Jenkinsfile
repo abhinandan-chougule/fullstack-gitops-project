@@ -70,23 +70,28 @@ pipeline {
 
     post {
         always {
-            emailext(
-                attachLog: true,
-                from: 'askchougule@gmail.com',
-                subject: "Pipeline finished - ${currentBuild.result}",
-                mimeType: 'text/html',
-                to: 'hardchougule@gmail.com',
-                body: """
-                    <html>
-                    <body>
-                        <h3>Pipeline Result: ${currentBuild.result}</h3>
-                        <p><b>Project:</b> ${env.JOB_NAME}</p>
-                        <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
-                        <p><b>URL:</b> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                    </body>
-                    </html>
-                """
-            )
+            script {
+                def recipient = "hardchougule@gmail.com"
+                echo ">>> Attempting to send email notification to: ${recipient}"
+                emailext(
+                    attachLog: true,
+                    from: 'askchougule@gmail.com',
+                    subject: "Pipeline finished - ${currentBuild.result}",
+                    mimeType: 'text/html',
+                    to: recipient,
+                    body: """
+                        <html>
+                        <body>
+                            <h3>Pipeline Result: ${currentBuild.result}</h3>
+                            <p><b>Project:</b> ${env.JOB_NAME}</p>
+                            <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
+                            <p><b>URL:</b> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                        </body>
+                        </html>
+                    """
+                )
+                echo ">>> Email notification step executed."
+            }
         }
     }
 }
