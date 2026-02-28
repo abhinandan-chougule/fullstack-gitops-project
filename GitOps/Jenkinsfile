@@ -3,8 +3,8 @@ pipeline {
     agent { label 'Node' }
 
     parameters {
-        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: '', description: 'Frontend Docker tag')
-        string(name: 'BACKEND_DOCKER_TAG', defaultValue: '', description: 'Backend Docker tag')
+        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: 'frontend', description: 'Frontend Docker tag')
+        string(name: 'BACKEND_DOCKER_TAG', defaultValue: 'backend', description: 'Backend Docker tag')
     }
 
     environment {
@@ -13,14 +13,13 @@ pipeline {
     }
 
     stages {
-
         stage("Workspace cleanup") {
             steps {
                 cleanWs()
             }
         }
 
-        stage('Git: Code Checkout') {
+        stage("Git: Code Checkout") {
             steps {
                 script {
                     code_checkout(env.REPO_URL, env.BRANCH)
@@ -28,7 +27,7 @@ pipeline {
             }
         }
 
-        stage('Verify: Docker Image Tags') {
+        stage("Verify: Docker Image Tags") {
             steps {
                 echo "FRONTEND_DOCKER_TAG: ${params.FRONTEND_DOCKER_TAG}"
                 echo "BACKEND_DOCKER_TAG: ${params.BACKEND_DOCKER_TAG}"
@@ -55,27 +54,13 @@ pipeline {
                         passwordVariable: 'GIT_TOKEN'
                     )
                 ]) {
-
                     sh '''
                         set -e
-
-                        echo "Configuring Git..."
                         git config user.name "Jenkins"
                         git config user.email "jenkins@ci.com"
-
-                        echo "Checking repository status:"
-                        git status
-
-                        echo "Adding changes..."
-                        git add .
-
-                        echo "Committing changes..."
-                        git commit -m "Updated image tags: frontend=${FRONTEND_DOCKER_TAG} backend=${BACKEND_DOCKER_TAG}" || echo "No changes to commit"
-
-                        echo "Setting authenticated remote..."
+                        git add kubernetes/*.yaml
+                        git diff --cached --quiet || git commit -m "Updated image tags: frontend=${FRONTEND_DOCKER_TAG} backend=${BACKEND_DOCKER_TAG}"
                         git remote set-url origin https://$GIT_USER:$GIT_TOKEN@github.com/abhinandan-chougule/fullstack-gitops-project.git
-
-                        echo "Pushing to GitHub..."
                         git push origin main
                     '''
                 }
@@ -84,40 +69,20 @@ pipeline {
     }
 
     post {
-        success {
+        always {
             emailext(
                 attachLog: true,
                 from: 'askchougule@gmail.com',
-                subject: "Application Updated Successfully - ${currentBuild.result}",
+                subject: "Pipeline finished - ${currentBuild.result}",
                 mimeType: 'text/html',
                 to: 'hardchougule@gmail.com',
                 body: """
                     <html>
                     <body>
-                        <h3>Deployment Successful ✅</h3>
+                        <h3>Pipeline Result: ${currentBuild.result}</h3>
                         <p><b>Project:</b> ${env.JOB_NAME}</p>
                         <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
                         <p><b>URL:</b> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                    </body>
-                    </html>
-                """
-            )
-        }
-
-        failure {
-            emailext(
-                attachLog: true,
-                from: 'askchougule@gmail.com',
-                subject: "Application Build Failed - ${currentBuild.result}",
-                mimeType: 'text/html',
-                to: 'hardchougule@gmail.com',
-                body: """
-                    <html>
-                    <body>
-                        <h3>Build Failed ❌</h3>
-                        <p><b>Project:</b> ${env.JOB_NAME}</p>
-                        <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
-                        <p><b>Check Console Output for details.</b></p>
                     </body>
                     </html>
                 """
