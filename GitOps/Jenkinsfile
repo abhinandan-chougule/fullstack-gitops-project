@@ -90,7 +90,7 @@ pipeline {
                 from: 'askchougule@gmail.com',
                 subject: "Application Updated Successfully - ${currentBuild.result}",
                 mimeType: 'text/html',
-                to: 'askchougule@gmail.com',
+                to: 'hardchougule@gmail.com',
                 body: """
                     <html>
                     <body>
@@ -110,7 +110,7 @@ pipeline {
                 from: 'askchougule@gmail.com',
                 subject: "Application Build Failed - ${currentBuild.result}",
                 mimeType: 'text/html',
-                to: 'askchougule@gmail.com',
+                to: 'hardchougule@gmail.com',
                 body: """
                     <html>
                     <body>
