@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: abhic25/fullstack-frontend-beta:front-prod25
+          image: abhic25/fullstack-frontend-beta:front-prod-28
           ports:
             - containerPort: 5173
 ---
